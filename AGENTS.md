@@ -64,10 +64,33 @@ internal/keymap/       layout tables (generated) + lookup; Linux text → stroke
 internal/server/       HTTP, WS, protocol, auth, peers API, QR endpoint
 internal/mdns/         responder + browser
 web/                   embedded UI (index.html, css, js, icons, manifest)
-tools/genlayouts.py    XKB → Go table generator
-deploy/                systemd unit, udev rule, install scripts, windows autostart
-Dockerfile, docker-compose.yml, Makefile, .github/workflows
+tools/gen
 ```
+
+## Screen view
+
+Typical phone layout of the embedded touchpad UI: pointer area first, then compact utility controls and keyboard.
+
+```text
++---------------------------------------------------------------+
+| OpenCouchpad                 remote.local   [⚙] [⎇] [◎]      |
+|  Living Room             RTT 12ms       Ctrl  Alt  Shift        |
+|                                                               |
+|  ┌───────────────────────────────────────────────────────────┐ |
+|  │  touchpad / pointer area                                 │ |
+|  │  one finger = move | tap = click                         │ |
+|  │  two fingers = scroll | drag = hold-and-move            │ |
+|  └───────────────────────────────────────────────────────────┘ |
+|                                                               |
+|  [Ctrl] [Alt] [Shift] [Tab] [Esc] [←] [→] [↑] [��] [⌫]       |
+|  q  w  e  r  t  y  u  i  o  p                               |
+|  a  s  d  f  g  h  j  k  l  ↵                                |
+|  ⇧  z  x  c  v  b  n  m  ,  .  ⇧  ␣  ⌫                       |
+|  123  ! ?  .  ⌂  .  .   ...                                |
++---------------------------------------------------------------+
+```
+
+This is intentionally touch-first: the large central region is kept for pointer movement and gestures, while the top/bottom utility rows stay compact for keyboard shortcuts and quick actions.
 
 ## Plan / Progress
 
