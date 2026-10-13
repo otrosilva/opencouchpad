@@ -35,6 +35,7 @@ type config struct {
 	port                                              int
 	portSet, mdns, showVersion, background, detect    bool
 	install, uninstall                                bool
+	screen                                           bool
 }
 
 func env(key, def string) string {
@@ -81,6 +82,7 @@ func parseFlags() config {
 	flag.BoolVar(&c.background, "background", false, "run without a console window (Windows) and log to a file (Windows, macOS)")
 	flag.BoolVar(&c.install, "install", false, "start OpenCouchpad automatically at login (Windows, macOS) with the given flags")
 	flag.BoolVar(&c.uninstall, "uninstall", false, "remove the autostart entry (Windows, macOS)")
+	flag.BoolVar(&c.screen, "screen", envBool("OPENCOUCHPAD_SCREEN", false), "enable screen-view demo mode (Wayland/Sway only)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "OpenCouchpad %s — control this computer from any phone browser.\n\nUsage: opencouchpad [flags]\n\nFlags (each also settable via OPENCOUCHPAD_<NAME> env var):\n", version)
 		flag.PrintDefaults()
@@ -186,6 +188,7 @@ func run(c config) error {
 		Name: c.name, OS: runtime.GOOS, Version: version, PIN: c.pin,
 		DefaultLayout: layout, Driver: drv, Web: web.FS, Peers: peers, URLs: urls,
 		AllowedHosts: strings.FieldsFunc(c.allowedHosts, func(r rune) bool { return r == ',' || r == ' ' }),
+		Screen: c.screen,
 	})
 	if err != nil {
 		return err
@@ -212,7 +215,6 @@ func run(c config) error {
 	}
 }
 
-// publicURLs lists addresses a phone can open, best first.
 func publicURLs(resp *mdns.Responder, port int) []string {
 	suffix := ""
 	if port != 80 {
@@ -255,7 +257,7 @@ func isVirtual(name string) bool {
 }
 
 func banner(c config, drv input.Driver, layout string, urls []string) {
-	slog.Info("OpenCouchpad started", "version", version, "name", c.name, "driver", drv.Name(), "layout", layout, "pin", c.pin != "")
+	slog.Info("OpenCouchpad started", "version", version, "name", c.name, "driver", drv.Name(), "layout", layout, "pin", c.pin != "", "screen", c.screen)
 	if c.background {
 		return
 	}
@@ -268,6 +270,9 @@ func banner(c config, drv input.Driver, layout string, urls []string) {
 	if c.pin == "" {
 		fmt.Println("  │  ⚠  No PIN set: anyone on this network can control this computer.")
 		fmt.Println("  │     Use --pin 1234 (or OPENCOUCHPAD_PIN) on shared networks.")
+	}
+	if c.screen {
+		fmt.Println("  │  Screen mode enabled: OPENCOUCHPAD_SCREEN=1 / --screen (Wayland/Sway only)")
 	}
 	fmt.Println("  ╰──────────────────────────────────────────────────")
 	// QR for the first IP URL: works even where .local names don't resolve.
