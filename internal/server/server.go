@@ -4,15 +4,20 @@ package server
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"image/jpeg"
+	"image/png"
 	"io/fs"
 	"mime"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"path"
 	"strings"
 	"sync"
@@ -51,6 +56,10 @@ type Server struct {
 	clients  atomic.Int32
 	upgrader websocket.Upgrader
 	limiter  *loginLimiter
+
+	screenMu   sync.RWMutex
+	screenImg  []byte
+	screenStop context.CancelFunc
 }
 
 type asset struct {
@@ -82,11 +91,15 @@ func New(cfg Config) (*Server, error) {
 	if err := s.loadAssets(); err != nil {
 		return nil, err
 	}
+	if cfg.Screen {
+		s.startScreenCapturer(context.Background(), time.Second)
+	}
 	s.mux.HandleFunc("GET /ws", s.handleWS)
 	s.mux.HandleFunc("GET /api/info", s.handleInfo)
 	s.mux.HandleFunc("POST /api/login", s.handleLogin)
 	s.mux.HandleFunc("GET /api/peers", s.handlePeers)
 	s.mux.HandleFunc("GET /api/qr.png", s.handleQR)
+	s.mux.HandleFunc("GET /api/screen.jpg", s.handleScreen)
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
 	s.mux.HandleFunc("GET /", s.handleStatic)
 	return s, nil
@@ -102,6 +115,85 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	s.mux.ServeHTTP(w, r)
+}
+
+func (s *Server) startScreenCapturer(ctx context.Context, interval time.Duration) {
+	if os.Getenv("SWAYSOCK") == "" {
+		return
+	}
+	if _, err := exec.LookPath("grim"); err != nil {
+		return
+	}
+	if s.screenStop != nil {
+		return
+	}
+	cctx, cancel := context.WithCancel(ctx)
+	s.screenStop = cancel
+
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-cctx.Done():
+				return
+			case <-t.C:
+				tmp, err := os.CreateTemp("", "opencouchpad-screen-*.png")
+				if err != nil {
+					continue
+				}
+				tmpName := tmp.Name()
+				tmp.Close()
+				cmd := exec.CommandContext(cctx, "grim", tmpName)
+				if err := cmd.Run(); err != nil {
+					os.Remove(tmpName)
+					continue
+				}
+				f, err := os.Open(tmpName)
+				if err != nil {
+					os.Remove(tmpName)
+					continue
+				}
+				img, err := png.Decode(f)
+				f.Close()
+				_ = os.Remove(tmpName)
+				if err != nil {
+					continue
+				}
+				var buf bytes.Buffer
+				if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 70}); err != nil {
+					continue
+				}
+				s.screenMu.Lock()
+				s.screenImg = buf.Bytes()
+				s.screenMu.Unlock()
+			}
+		}
+	}()
+}
+
+func (s *Server) stopScreenCapturer() {
+	if s.screenStop != nil {
+		s.screenStop()
+		s.screenStop = nil
+	}
+}
+
+func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.Screen || os.Getenv("SWAYSOCK") == "" {
+		http.NotFound(w, r)
+		return
+	}
+	s.screenMu.RLock()
+	img := s.screenImg
+	s.screenMu.RUnlock()
+	if len(img) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Write(img)
 }
 
 // allowedHost accepts IP literals, single-label names, mDNS/LAN suffixes and
