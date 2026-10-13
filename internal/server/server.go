@@ -39,6 +39,7 @@ type Config struct {
 	Peers         func() []mdns.Peer // may be nil
 	URLs          func() []string    // addresses phones can use, best first
 	AllowedHosts  []string           // extra Host names accepted (e.g. behind a reverse proxy)
+	Screen        bool               // demo/screen preview mode enabled via OPENCOUCHPAD_SCREEN
 }
 
 // Server is the HTTP handler.
@@ -228,6 +229,7 @@ func (s *Server) info(r *http.Request) map[string]any {
 		"layout":  s.cfg.DefaultLayout,
 		"layouts": keymap.List(),
 		"urls":    urls,
+		"screen":  s.cfg.Screen,
 	}
 }
 
